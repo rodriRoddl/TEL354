@@ -4,11 +4,13 @@ from pathlib import Path
 import sounddevice as sd
 import librosa
 import tensorflow as tf
-from tensorflow.keras.models import Sequential # type: ignore
-from tensorflow.keras.layers import Dense, Dropout, LSTM, Bidirectional # type: ignore
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout, LSTM, Bidirectional
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.model_selection import train_test_split
-from tensorflow.keras.utils import to_categorical # type: ignore
+from tensorflow.keras.utils import to_categorical
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+import matplotlib.pyplot as plt
 
 # Función para capturar audio
 def record_audio(duration=2, sr=22050):
@@ -85,8 +87,8 @@ X_train, X_test, y_train, y_test = train_test_split(features, labels_categorical
 model = create_model((X_train.shape[1], X_train.shape[2]), num_classes=labels_categorical.shape[1])
 model.fit(X_train, y_train, epochs=15, batch_size=8, validation_data=(X_test, y_test))
 
-# Función para predecir el hablante
-def recognize_speaker(audio, sr=22050):
+# Función para predecir el hablante y generar la matriz de confusión
+def recognize_speaker_and_confusion_matrix(audio, sr=22050, scaler=None, label_encoder=None, model=None, max_pad_len=87, y_true=None):
     features = extract_features(audio, sr).reshape(1, -1, 13)
     features = scaler.transform(features.reshape(-1, features.shape[-1])).reshape(features.shape)
     features_padded = np.zeros((1, max_pad_len, 13))
@@ -97,9 +99,22 @@ def recognize_speaker(audio, sr=22050):
     prediction = model.predict(features_padded)
     label_index = np.argmax(prediction)
     label = label_encoder.inverse_transform([label_index])
+    
+    # Predicción sobre el conjunto de prueba para matriz de confusión
+    y_pred = model.predict(X_test)
+    y_pred_classes = np.argmax(y_pred, axis=1)
+    y_true_classes = np.argmax(y_true, axis=1)
+    
+    # Generar y mostrar la matriz de confusión
+    conf_matrix = confusion_matrix(y_true_classes, y_pred_classes)
+    disp = ConfusionMatrixDisplay(confusion_matrix=conf_matrix, display_labels=label_encoder.classes_)
+    disp.plot(cmap=plt.cm.Blues)
+    plt.show()
+    
     return label[0]
 
 # Grabación y reconocimiento en tiempo real
 audio = record_audio(duration=2)
-recognized_speaker = recognize_speaker(audio)
+recognized_speaker = recognize_speaker_and_confusion_matrix(audio, scaler=scaler, label_encoder=label_encoder, model=model, max_pad_len=max_pad_len, y_true=y_test)
 print(f"Recognized speaker: {recognized_speaker}")
+
